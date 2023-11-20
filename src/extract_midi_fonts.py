@@ -23,29 +23,45 @@ if not os.path.exists(chords_dir):
     os.makedirs(chords_dir)
 
 # Función para procesar archivos MIDI
+
+
 def process_midi_files(midi_dir, notes_dir, chords_dir, duration_multiplier=1.0):
-    for filename in os.listdir(midi_dir):
-        if filename.endswith('.mid'):
-            midi_path = os.path.join(midi_dir, filename)
-            midi_file = converter.parse(midi_path)
+    for root, dirs, files in os.walk(midi_dir):
+        for filename in files:
+            if filename.endswith('.mid'):
+                midi_path = os.path.join(root, filename)
+                midi_file = converter.parse(midi_path)
 
-            # Crear nuevas pistas para notas y acordes
-            notes_track = stream.Part()
-            chords_track = stream.Part()
+                # Crear nuevas pistas para notas y acordes
+                notes_track = stream.Part()
+                chords_track = stream.Part()
 
-            for element in midi_file.flat:
-                if isinstance(element, (Note, Chord)):
-                    # Ajustar la duración de la nota o acorde
-                    element.duration.quarterLength *= duration_multiplier
+                # Analizar la tonalidad del archivo MIDI
+                key = midi_file.analyze('key')
+                key_name = key.tonic.name + " " + key.mode
 
-                if isinstance(element, Note):
-                    notes_track.append(element)
-                elif isinstance(element, Chord):
-                    chords_track.append(element)
+                for element in midi_file.flat:
+                    if isinstance(element, (Note, Chord)):
+                        # Ajustar la duración de la nota o acorde
+                        element.duration.quarterLength *= duration_multiplier
 
-            # Guardar las pistas en archivos MIDI en los subdirectorios correspondientes
-            notes_track.write('midi', os.path.join(notes_dir, f'{filename}_notes.mid'))
-            chords_track.write('midi', os.path.join(chords_dir, f'{filename}_chords.mid'))
+                    if isinstance(element, Note):
+                        notes_track.append(element)
+                    elif isinstance(element, Chord):
+                        chords_track.append(element)
+
+                        # Modificar las rutas de salida para incluir la tonalidad
+                base_filename = filename.split(".")[0]
+                notes_output_path = os.path.join(
+                    notes_dir, f'{base_filename}_notes_{key_name}.mid')
+                chords_output_path = os.path.join(
+                    chords_dir, f'{base_filename}_chords_{key_name}.mid')
+
+                # Guardar las pistas en archivos MIDI en las carpetas 'chords' y 'notes'
+
+                notes_track.write('midi', notes_output_path)
+                chords_track.write('midi', chords_output_path)
+
 
 # Llamar a la función con un multiplicador de duración
 process_midi_files(midi_dir, notes_dir, chords_dir, duration_multiplier=8.0)
