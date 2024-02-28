@@ -6,8 +6,7 @@ midi_dir = './assets/midiFont'
 # Directorio de archivos MIDI procesados
 processed_dir = './assets/processed_midiFiles'
 
-# Duración deseada para todas las notas (en cuartos de nota)
-desired_duration = 8   #0.125  # 1/8 de nota
+
 
 # Crear directorios de archivos procesados si no existen
 if not os.path.exists(processed_dir):
@@ -25,6 +24,8 @@ if not os.path.exists(chords_dir):
 
 # Función para procesar archivos MIDI
 def process_midi_files(midi_dir, notes_dir, chords_dir):
+    # Duración deseada para todas las notas (en cuartos de nota)
+    desired_duration = 8   #0.125  # 1/8 de nota
     for root, dirs, files in os.walk(midi_dir):
         for filename in files:
             if filename.endswith('.mid'):
