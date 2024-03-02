@@ -1,9 +1,8 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, send_file
 from flask_cors import CORS
 from music21 import converter, stream, note, chord
 import base64
 import os
-import shutil
 import tempfile
 import zipfile
 
@@ -22,13 +21,13 @@ def process_midi():
 
     # Parámetros
     desired_duration = data.get('multiplier', 8)
-    key_name = data.get('keyName', False)
+    key_name = data.get('keyName', True)
     notes_export = data.get('notes', True)
     chord_export = data.get('chords', True)
     notes_range = data.get('notesRange', "C1,C6")
     midi_files_base64 = data['midiFiles']
 
-    # Lista para almacenar los nombres de los archivos generados
+    # Lista para almacenar las rutas de los archivos generados
     generated_files = []
 
     # Decodificar archivos MIDI desde base64 y procesarlos
@@ -54,29 +53,44 @@ def process_midi():
 
         # Generar archivos MIDI si es necesario
         if notes_export:
-            notes_output_path = os.path.join(processed_dir, f'midi_{index}_notes.mid')
+            notes_output_filename = f'midi_{index}_notes'
+            if key_name:
+                # Obtener la tonalidad del archivo MIDI
+                key = midi_stream.analyze('key')
+                key_name = key.tonic.name + " " + key.mode
+                notes_output_filename += f'_{key_name}'
+            notes_output_filename += '.mid'
+            notes_output_path = os.path.join(processed_dir, notes_output_filename)
             notes_track.write('midi', notes_output_path)
             generated_files.append(notes_output_path)
+
         if chord_export:
-            chords_output_path = os.path.join(processed_dir, f'midi_{index}_chords.mid')
+            chords_output_filename = f'midi_{index}_chords'
+            if key_name:
+                # Obtener la tonalidad del archivo MIDI
+                key = midi_stream.analyze('key')
+                key_name = key.tonic.name + " " + key.mode
+                chords_output_filename += f'_{key_name}'
+            chords_output_filename += '.mid'
+            chords_output_path = os.path.join(processed_dir, chords_output_filename)
             chords_track.write('midi', chords_output_path)
             generated_files.append(chords_output_path)
 
-    # Comprimir los archivos generados en un archivo RAR
-    with tempfile.NamedTemporaryFile(mode='w+b', delete=False) as tmpfile:
-        with zipfile.ZipFile(tmpfile.name, 'w') as zipf:
-            for file_path in generated_files:
-                # Obtenemos el nombre del archivo de la ruta completa
-                file_name = os.path.basename(file_path)
-                # Escribimos el archivo en el ZIP con su nombre relativo
-                zipf.write(file_path, arcname=file_name)
+    # Comprimir los archivos generados en un archivo ZIP
+    zip_filename = 'processed_files.zip'
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+        for file_path in generated_files:
+            # Obtenemos el nombre del archivo de la ruta completa
+            file_name = os.path.basename(file_path)
+            # Escribimos el archivo en el ZIP con su nombre relativo
+            zipf.write(file_path, arcname=file_name)
 
-# Descargar el archivo comprimido
-        tmpfile.seek(0)
-        return send_file(tmpfile.name, as_attachment=True)
+    # Eliminar archivos generados
+    for file_path in generated_files:
+        os.remove(file_path)
 
-
-
+    # Descargar el archivo comprimido
+    return send_file(zip_filename, as_attachment=True)
 
 
 if __name__ == '__main__':
