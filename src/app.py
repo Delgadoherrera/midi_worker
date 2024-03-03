@@ -6,12 +6,10 @@ midi_dir = './assets/midiFont'
 # Directorio de archivos MIDI procesados
 processed_dir = './assets/processed_midiFiles'
 
-
-
 # Crear directorios de archivos procesados si no existen
 if not os.path.exists(processed_dir):
     os.makedirs(processed_dir)
- 
+
 # Subdirectorios para notas y acordes
 notes_dir = os.path.join(processed_dir, 'notes')
 chords_dir = os.path.join(processed_dir, 'chords')
@@ -23,9 +21,13 @@ if not os.path.exists(chords_dir):
     os.makedirs(chords_dir)
 
 # Función para procesar archivos MIDI
-def process_midi_files(midi_dir, notes_dir, chords_dir):
+def process_midi_files(midi_dir, notes_dir, chords_dir, target_range=('C1', 'C2')):
+    # Convertir las notas del rango objetivo a números MIDI para facilitar la comparación
+    target_range_midi = [note.Note(note_name).pitch.midi for note_name in target_range]
     # Duración deseada para todas las notas (en cuartos de nota)
-    desired_duration = 8   #0.125  # 1/8 de nota
+    desired_duration = 8   # 1/8 de nota
+    
+
     for root, dirs, files in os.walk(midi_dir):
         for filename in files:
             if filename.endswith('.mid'):
@@ -42,12 +44,23 @@ def process_midi_files(midi_dir, notes_dir, chords_dir):
 
                 for element in midi_file.flatten():
                     if isinstance(element, note.Note):
+                        # Ajustar la nota al rango objetivo si está fuera del rango
+                        if element.pitch.midi < target_range_midi[0]:
+                            element.transpose(target_range_midi[0] - element.pitch.midi, inPlace=True)
+                        elif element.pitch.midi > target_range_midi[1]:
+                            element.transpose(target_range_midi[1] - element.pitch.midi, inPlace=True)
                         # Crear una nueva nota con la duración deseada
                         new_note = note.Note()
                         new_note.pitch = element.pitch
                         new_note.duration.quarterLength = desired_duration
                         notes_track.append(new_note)
                     elif isinstance(element, chord.Chord):
+                        # Ajustar los acordes al rango objetivo si alguno de sus tonos está fuera del rango
+                        for tone in element.pitches:
+                            if tone.midi < target_range_midi[0]:
+                                element.transpose(target_range_midi[0] - tone.midi, inPlace=True)
+                            elif tone.midi > target_range_midi[1]:
+                                element.transpose(target_range_midi[1] - tone.midi, inPlace=True)
                         # Crear un nuevo acorde con la duración deseada
                         new_chord = chord.Chord()
                         new_chord.pitches = element.pitches
