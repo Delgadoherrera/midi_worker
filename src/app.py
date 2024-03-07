@@ -14,6 +14,12 @@ processed_dir = './assets/processed_midiFiles'
 if not os.path.exists(processed_dir):
     os.makedirs(processed_dir)
 
+def increment_note(note_str):
+    # Función para incrementar la nota en +1
+    pitch_class = note_str[:-1]
+    octave = int(note_str[-1])
+    return f"{pitch_class}{octave + 1}"
+
 @app.route('/process_midi', methods=['POST'])
 def process_midi():
     # Obtener datos de la solicitud
@@ -24,14 +30,28 @@ def process_midi():
     key_name = data.get('keyName', True)
     notes_export = data.get('notes', True)
     chord_export = data.get('chords', True)
-    notes_range = data.get('notesRange', "C1,C6")
-    midi_files_base64 = data['midiFiles']
+    raw_notes_range = data.get('notesRange', "C1,C6")
+
+    # Validar el formato del parámetro notesRange
+    try:
+        start_note, end_note = raw_notes_range.split(',')
+        start_note = increment_note(start_note.strip())
+        end_note = increment_note(end_note.strip())
+    except ValueError:
+        return {'error': 'El parámetro notesRange no está en el formato correcto. Debe ser "C1,C6".'}
+
+    # Convertir las notas a objetos note.Note
+    start_note_obj = note.Note(start_note)
+    end_note_obj = note.Note(end_note)
+
+    # Incrementar en +1 el valor del final del rango
+    end_note_obj.transpose(1, inPlace=True)
 
     # Lista para almacenar las rutas de los archivos generados
     generated_files = []
 
     # Decodificar archivos MIDI desde base64 y procesarlos
-    for index, midi_base64 in enumerate(midi_files_base64):
+    for index, midi_base64 in enumerate(data['midiFiles']):
         midi_data = base64.b64decode(midi_base64)
         midi_stream = converter.parseData(midi_data)
 
@@ -41,13 +61,21 @@ def process_midi():
 
         for element in midi_stream.flatten():
             if isinstance(element, note.Note):
+                # Verificar si la nota está fuera del rango
+                if element.pitch < start_note_obj.pitch or element.pitch > end_note_obj.pitch:
+                    # Ajustar la octava de la nota al rango especificado
+                    element.pitch.octave = start_note_obj.pitch.octave
                 new_note = note.Note()
                 new_note.pitch = element.pitch
                 new_note.duration.quarterLength = desired_duration
                 notes_track.append(new_note)
             elif isinstance(element, chord.Chord):
-                new_chord = chord.Chord()
-                new_chord.pitches = element.pitches
+                # Verificar si alguna de las notas del acorde está fuera del rango
+                for pitch in element.pitches:
+                    if pitch < start_note_obj.pitch or pitch > end_note_obj.pitch:
+                        # Ajustar la octava de la nota al rango especificado
+                        pitch.octave = start_note_obj.pitch.octave
+                new_chord = chord.Chord(element.pitches)
                 new_chord.duration.quarterLength = desired_duration
                 chords_track.append(new_chord)
 
@@ -91,7 +119,6 @@ def process_midi():
 
     # Descargar el archivo comprimido
     return send_file(zip_filename, as_attachment=True)
-
 
 if __name__ == '__main__':
     app.run(debug=True)
