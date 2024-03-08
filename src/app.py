@@ -14,6 +14,15 @@ for directory in [notes_dir, chords_dir]:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+def adjust_note_to_range(note_obj, start_note_obj, end_note_obj):
+    """
+    Ajusta una nota al rango especificado, cambiándola a la octava más cercana dentro del rango.
+    """
+    while note_obj.pitch < start_note_obj.pitch:
+        note_obj.octave += 1
+    while note_obj.pitch > end_note_obj.pitch:
+        note_obj.octave -= 1
+    return note_obj
 
 def increment_note(note_str):
     pitch_class = note_str[:-1]
@@ -69,29 +78,41 @@ def merge_consecutive_duplicates(track):
         cleaned_track.append(last_element)
     return cleaned_track
 
-def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, notes_export=True, chord_export=True, raw_notes_range="C1,C6"):
+def process_midi_file(midi_file_path, index, original_rythm_x=False, key_name=True, notes_export=True, chord_export=True, raw_notes_range="C1,C6"):
     try:
         start_note, end_note = raw_notes_range.split(',')
         start_note = increment_note(start_note.strip())
         end_note = increment_note(end_note.strip())
     except ValueError:
-        return {'error': 'El parámetro notesRange no está en el formato correcto. Debe ser "C1,C6".'}
+        return {'error': 'El parámetro raw_notes_range no está en el formato correcto. Debe ser, por ejemplo, "C1,C6".'}
+
+    start_note_obj = note.Note(start_note)
+    end_note_obj = note.Note(end_note)
+    end_note_obj.transpose(1, inPlace=True)  # Asegura que el rango incluya el límite superior
 
     midi_stream = converter.parse(midi_file_path)
+
     notes_track = stream.Part()
     chords_track = stream.Part()
 
     for element in midi_stream.flatten():
-        if isinstance(element, note.Note) or isinstance(element, chord.Chord):
-            new_element = element
+        if isinstance(element, note.Note):
+            # Ajusta la nota si está fuera del rango
+            adjusted_note = adjust_note_to_range(element, start_note_obj, end_note_obj)
+            # Procesar la nota ajustada aquí (por ejemplo, cambiar la duración si es necesario)
             if original_rythm_x and isinstance(original_rythm_x, int):
-                new_element.duration.quarterLength *= original_rythm_x
+                adjusted_note.duration.quarterLength *= original_rythm_x
             else:
-                new_element.duration.quarterLength = desired_duration
-            if isinstance(element, note.Note):
-                notes_track.append(new_element)
+                adjusted_note.duration.quarterLength = 4  # O cualquier lógica de duración deseada
+            notes_track.append(adjusted_note)
+        elif isinstance(element, chord.Chord):
+            adjusted_chord = chord.Chord([adjust_note_to_range(n, start_note_obj, end_note_obj) for n in element.notes])
+            # Procesar el acorde ajustado aquí (por ejemplo, cambiar la duración si es necesario)
+            if original_rythm_x and isinstance(original_rythm_x, int):
+                adjusted_chord.duration.quarterLength *= original_rythm_x
             else:
-                chords_track.append(new_element)
+                adjusted_chord.duration.quarterLength = 4  # O cualquier lógica de duración deseada
+            chords_track.append(adjusted_chord)
 
     generated_files = []
 
@@ -135,7 +156,7 @@ if __name__ == '__main__':
     key_name = True
     notes_export = True
     chord_export = True
-    raw_notes_range = "C2,C3"
+    raw_notes_range = "C1,C1"
     delete_consecutive = False
     legato_consecutive = True   
 
