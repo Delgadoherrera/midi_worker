@@ -1,24 +1,75 @@
 from music21 import converter, stream, note, chord
-import base64
 import os
-import zipfile
 
 # Directorio de archivos MIDI a procesar
-midi_files_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/midiFont'
+midi_files_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/partial_midi_fonts'
 
 # Directorio de archivos MIDI procesados
 processed_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/processed_midiFiles'
-if not os.path.exists(processed_dir):
-    os.makedirs(processed_dir)
+notes_dir = os.path.join(processed_dir, 'notes')
+chords_dir = os.path.join(processed_dir, 'chords')
+
+# Crear directorios si no existen
+for directory in [notes_dir, chords_dir]:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
 
 def increment_note(note_str):
-    # Función para incrementar la nota en +1
     pitch_class = note_str[:-1]
     octave = int(note_str[-1])
     return f"{pitch_class}{octave + 1}"
 
+def remove_consecutive_duplicates(track):
+    cleaned_elements = []
+    last_element = None
+    for element in track.notesAndRests:
+        if isinstance(element, note.Note):
+            current_repr = (element.pitch.midi,)
+        elif isinstance(element, chord.Chord):
+            current_repr = tuple(sorted(p.midi for p in element.pitches))
+        else:
+            continue  # Ignorar elementos que no sean notas o acordes
+        
+        if current_repr != last_element:
+            cleaned_elements.append(element)
+            last_element = current_repr
+
+    cleaned_track = stream.Part()
+    for element in cleaned_elements:
+        cleaned_track.append(element)
+    return cleaned_track
+
+def process_track(track, delete_consecutive, legato_consecutive):
+    if delete_consecutive:
+        track = remove_consecutive_duplicates(track)
+    if legato_consecutive:
+        track = merge_consecutive_duplicates(track)
+    return track
+
+def merge_consecutive_duplicates(track):
+    cleaned_track = stream.Part()
+    last_element_repr = None
+    last_element = None
+    for element in track.notesAndRests:
+        if isinstance(element, note.Note) or isinstance(element, chord.Chord):
+            current_repr = (element.pitch.midi,) if isinstance(element, note.Note) else tuple(sorted(p.midi for p in element.pitches))
+            if current_repr == last_element_repr:
+                last_element.duration.quarterLength += element.duration.quarterLength
+            else:
+                if last_element is not None:
+                    cleaned_track.append(last_element)
+                last_element = element
+                last_element_repr = current_repr
+        else:
+            cleaned_track.append(element)
+            last_element = None
+            last_element_repr = None
+    if last_element is not None:
+        cleaned_track.append(last_element)
+    return cleaned_track
+
 def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, notes_export=True, chord_export=True, raw_notes_range="C1,C6"):
-    # Validar el formato del parámetro notesRange
     try:
         start_note, end_note = raw_notes_range.split(',')
         start_note = increment_note(start_note.strip())
@@ -26,106 +77,74 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
     except ValueError:
         return {'error': 'El parámetro notesRange no está en el formato correcto. Debe ser "C1,C6".'}
 
-    # Convertir las notas a objetos note.Note
-    start_note_obj = note.Note(start_note)
-    end_note_obj = note.Note(end_note)
-
-    # Incrementar en +1 el valor del final del rango
-    end_note_obj.transpose(1, inPlace=True)
-
-    # Decodificar archivo MIDI desde archivo y procesarlo
     midi_stream = converter.parse(midi_file_path)
-
-    # Crear nuevas pistas para notas y acordes
     notes_track = stream.Part()
     chords_track = stream.Part()
 
     for element in midi_stream.flatten():
-        if isinstance(element, note.Note):
-            # Verificar si la nota está fuera del rango
-            if element.pitch < start_note_obj.pitch or element.pitch > end_note_obj.pitch:
-                # Ajustar la octava de la nota al rango especificado
-                element.pitch.octave = start_note_obj.pitch.octave
-            new_note = note.Note()
-            new_note.pitch = element.pitch
-            new_note.duration.quarterLength = desired_duration
-            notes_track.append(new_note)
-        elif isinstance(element, chord.Chord):
-            # Verificar si alguna de las notas del acorde está fuera del rango
-            for pitch in element.pitches:
-                if pitch < start_note_obj.pitch or pitch > end_note_obj.pitch:
-                    # Ajustar la octava de la nota al rango especificado
-                    pitch.octave = start_note_obj.pitch.octave
-            new_chord = chord.Chord(element.pitches)
-            new_chord.duration.quarterLength = desired_duration
-            chords_track.append(new_chord)
+        if isinstance(element, note.Note) or isinstance(element, chord.Chord):
+            new_element = element
+            if original_rythm_x and isinstance(original_rythm_x, int):
+                new_element.duration.quarterLength *= original_rythm_x
+            else:
+                new_element.duration.quarterLength = desired_duration
+            if isinstance(element, note.Note):
+                notes_track.append(new_element)
+            else:
+                chords_track.append(new_element)
 
-    # Generar archivos MIDI si es necesario
     generated_files = []
 
     if notes_export:
-        notes_output_filename = f'midi_{index}_notes'
-        if key_name:
-            # Obtener la tonalidad del archivo MIDI
-            key = midi_stream.analyze('key')
-            key_name = key.tonic.name + " " + key.mode
-            notes_output_filename += f'_{key_name}'
-        notes_output_filename += '.mid'
-        notes_output_path = os.path.join(processed_dir, notes_output_filename)
-        notes_track.write('midi', notes_output_path)
+        notes_track = process_track(notes_track, False, True)
+        notes_output_path = os.path.join(notes_dir, f'SA_Transformed_Midi_{index}_Notes.mid')
+        notes_track.write('midi', fp=notes_output_path)
         generated_files.append(notes_output_path)
 
     if chord_export:
-        chords_output_filename = f'midi_{index}_chords'
-        if key_name:
-            # Obtener la tonalidad del archivo MIDI
-            key = midi_stream.analyze('key')
-            key_name = key.tonic.name + " " + key.mode
-            chords_output_filename += f'_{key_name}'
-        chords_output_filename += '.mid'
-        chords_output_path = os.path.join(processed_dir, chords_output_filename)
-        chords_track.write('midi', chords_output_path)
+        chords_track = process_track(chords_track, False, True)
+        chords_output_path = os.path.join(chords_dir, f'SA_Transformed_Midi_{index}_Chords.mid')
+        chords_track.write('midi', fp=chords_output_path)
         generated_files.append(chords_output_path)
 
     return generated_files
 
-def process_all_midi_files():
-    # Lista para almacenar las rutas de los archivos generados
+def process_all_midi_files(desired_duration=1, key_name=False, notes_export=True, chord_export=True, raw_notes_range="D2,G5"):
     all_generated_files = []
 
-    # Obtener lista de archivos MIDI en el directorio
-    midi_files = [f for f in os.listdir(midi_files_dir) if f.endswith('.mid')]
+    for root, dirs, files in os.walk(midi_files_dir):
+        for midi_file in files:
+            if midi_file.endswith('.mid'):
+                midi_file_path = os.path.join(root, midi_file)
+                generated_files = process_midi_file(
+                    midi_file_path,
+                    len(all_generated_files),
+                    desired_duration,
+                    key_name,
+                    notes_export,
+                    chord_export,
+                    raw_notes_range
+                )
+                all_generated_files.extend(generated_files)
 
-    for index, midi_file in enumerate(midi_files):
-        midi_file_path = os.path.join(midi_files_dir, midi_file)
-        generated_files = process_midi_file(midi_file_path, index)
-        all_generated_files.extend(generated_files)
-
-    # Comprimir los archivos generados en un archivo ZIP
-    zip_filename = 'processed_files.zip'
-    with zipfile.ZipFile(zip_filename, 'w') as zipf:
-        for file_path in all_generated_files:
-            # Obtenemos el nombre del archivo de la ruta completa
-            file_name = os.path.basename(file_path)
-            # Escribimos el archivo en el ZIP con su nombre relativo
-            zipf.write(file_path, arcname=file_name)
-
-    # Eliminar archivos generados
-    for file_path in all_generated_files:
-        os.remove(file_path)
+    return {'generated_files': all_generated_files}
 
 if __name__ == '__main__':
-    # Puedes ajustar los valores de los parámetros aquí
     desired_duration = 4
-    key_name = False
+    original_rythm_x = 1  # Cambiar a False o a otro valor numérico según sea necesario
+    key_name = True
     notes_export = True
     chord_export = True
-    raw_notes_range = "D2,G5"
+    raw_notes_range = "C2,C3"
+    delete_consecutive = False
+    legato_consecutive = True   
 
-    process_all_midi_files(
+
+    generated_files_info = process_all_midi_files(
         desired_duration=desired_duration,
         key_name=key_name,
         notes_export=notes_export,
         chord_export=chord_export,
         raw_notes_range=raw_notes_range
     )
+    print(generated_files_info)
