@@ -144,12 +144,22 @@ def quantize_note_to_scale(note, chosen_scale):
     return note
 
 def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, notes_export=True, chord_export=True, raw_notes_range="C1,C6"):
+    midi_stream = converter.parse(midi_file_path)
+    key = midi_stream.analyze('key')
+
+    # Ajustamos el rango de notas basado en la tónica de la clave
+    tonic_note = key.tonic.nameWithOctave  # Obtiene la tónica con la octava
+
     try:
-        start_note, end_note = raw_notes_range.split(',')
-        start_note = increment_note(start_note.strip())
-        end_note = increment_note(end_note.strip())
+        raw_start_note, raw_end_note = raw_notes_range.split(',')
+        # Se ajusta el rango basado en la tónica
+        start_note = tonic_note[0] + raw_start_note[1:]
+        end_note = tonic_note[0] + raw_end_note[1:]
+        start_note_obj = note.Note(start_note)
+        end_note_obj = note.Note(end_note)
     except ValueError:
         return {'error': 'El parámetro notesRange no está en el formato correcto. Debe ser "C1,C6".'}
+
 
     start_note_obj = note.Note(start_note)
     end_note_obj = note.Note(end_note)
@@ -246,8 +256,8 @@ if __name__ == '__main__':
     notes_export = False
     chord_export = True
     raw_notes_range = "C2,C3"
-    delete_consecutive = False
-    legato_consecutive = True  
+    delete_consecutive = True
+    legato_consecutive = False  
 
     generated_files_info = process_all_midi_files(
         desired_duration=desired_duration,
