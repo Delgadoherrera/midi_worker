@@ -2,7 +2,7 @@ from music21 import converter, stream, note, chord
 import os
 
 # Directorio de archivos MIDI a procesar
-midi_files_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/partial_midi_fonts'
+midi_files_dir = 'C:/Users/souhAtoms/Documentos/MIDIs/'
 
 # Directorio de archivos MIDI procesados
 processed_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/processed_midiFiles'
