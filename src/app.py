@@ -2,10 +2,11 @@ from music21 import converter, stream, note, chord
 import os
 
 # Directorio de archivos MIDI a procesar
-midi_files_dir = 'C:/Users/souhAtoms/Documentos/MIDIs/'
+midi_files_dir = 'C:/Users/souhAtoms/Documents/MIDIs/'
 
 # Directorio de archivos MIDI procesados
 processed_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/processed_midiFiles'
+
 notes_dir = os.path.join(processed_dir, 'notes')
 chords_dir = os.path.join(processed_dir, 'chords')
 
@@ -108,7 +109,7 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
 
     start_note_obj = note.Note(start_note)
     end_note_obj = note.Note(end_note)
-    end_note_obj.transpose(1, inPlace=True)  # Esto asegura que el rango incluya el extremo superior
+   # end_note_obj.transpose(1, inPlace=True)  # Esto asegura que el rango incluya el extremo superior
 
     midi_stream = converter.parse(midi_file_path)
 
@@ -130,12 +131,13 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
                     notes_track.append(new_note)
                     last_note_or_chord = current_note_repr
             elif isinstance(element, chord.Chord):
-                current_chord_repr = tuple(sorted(p.midi for p in element.pitches))
-                if last_note_or_chord != current_chord_repr:
-                    new_chord = chord.Chord(element.pitches)
-                    new_chord.duration.quarterLength = desired_duration
-                    chords_track.append(new_chord)
-                    last_note_or_chord = current_chord_repr
+                if len(element.pitches) > 1:  # Verificar que hay más de una nota
+                    current_chord_repr = tuple(sorted(p.midi for p in element.pitches))
+                    if last_note_or_chord != current_chord_repr:
+                        new_chord = chord.Chord(element.pitches)
+                        new_chord.duration.quarterLength = desired_duration
+                        chords_track.append(new_chord)
+                        last_note_or_chord = current_chord_repr
 
     generated_files = []
 
@@ -188,11 +190,11 @@ def process_all_midi_files(desired_duration=1, key_name=False, notes_export=True
 if __name__ == '__main__':
     desired_duration = 4
     key_name = True
-    notes_export = True
+    notes_export = False
     chord_export = True
     raw_notes_range = "C2,C3"
-    delete_consecutive = False
-    legato_consecutive = True  
+    delete_consecutive = True
+    legato_consecutive = False  
 
     generated_files_info = process_all_midi_files(
         desired_duration=desired_duration,
@@ -200,5 +202,5 @@ if __name__ == '__main__':
         notes_export=notes_export,
         chord_export=chord_export,
         raw_notes_range=raw_notes_range
-    )
+    ) 
     print(generated_files_info)
