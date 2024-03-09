@@ -3,6 +3,7 @@ import os
 
 # Directorio de archivos MIDI a procesar
 midi_files_dir = 'C:/Users/souhAtoms/Documents/MIDIs/'
+#midi_files_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/partial_midi_fonts'
 
 # Directorio de archivos MIDI procesados
 processed_dir = 'C:/Users/souhAtoms/Desktop/Desarrollo WIN 2024/personal/midi_worker/src/assets/processed_midiFiles'
@@ -248,14 +249,14 @@ def process_all_midi_files(desired_duration=1, key_name=False, notes_export=True
                 )
                 all_generated_files.extend(generated_files)
 
-    return {'generated_files': all_generated_files}
+    return {'generated_files': all_generated_files} 
 
 if __name__ == '__main__':
-    desired_duration = 8
+    desired_duration = 4
     key_name = True
-    notes_export = False
+    notes_export = True
     chord_export = True
-    raw_notes_range = "C2,C3"
+    raw_notes_range = "C4,C5"
     delete_consecutive = True
     legato_consecutive = False  
 
