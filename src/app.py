@@ -1,4 +1,4 @@
-from music21 import converter, stream, note, chord
+from music21 import converter, stream, note, chord, scale
 import os
 
 # Directorio de archivos MIDI a procesar
@@ -15,6 +15,27 @@ for directory in [notes_dir, chords_dir]:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+def are_chords_equivalent(chord1, chord2):
+    """
+    Comprueba si dos acordes son equivalentes, ignorando el orden de las notas
+    y permitiendo pequeñas variaciones en las notas.
+    """
+    # Obtiene las notas (pitches MIDI) de cada acorde, ordenadas
+    pitches1 = sorted(p.midi for p in chord1.pitches)
+    pitches2 = sorted(p.midi for p in chord2.pitches)
+
+    # Comprueba si los acordes tienen el mismo número de notas
+    if len(pitches1) != len(pitches2):
+        return False
+
+    # Permite una pequeña variación en las notas para considerarlas iguales
+    variation_threshold = 1  # Puedes ajustar este valor si es necesario
+    for p1, p2 in zip(pitches1, pitches2):
+        if abs(p1 - p2) > variation_threshold:
+            return False
+
+    return True
+
 def increment_note(note_str):
     # Función para incrementar la nota en +1
     pitch_class = note_str[:-1]
@@ -24,18 +45,25 @@ def increment_note(note_str):
 def remove_consecutive_duplicates(track):
     cleaned_elements = []
     last_element = None
-    
-    for element in track.notesAndRests:  # Cambio para considerar sólo notas y acordes
-        if isinstance(element, note.Note):
-            current_repr = (element.pitch.midi,)
-        elif isinstance(element, chord.Chord):
-            current_repr = tuple(sorted(p.midi for p in element.pitches))
+
+    for element in track.notesAndRests:
+        # Ignorar elementos que no sean notas o acordes
+        if not isinstance(element, (note.Note, chord.Chord)):
+            continue
+
+        current_repr = element if isinstance(element, chord.Chord) else (element.pitch.midi,)
+
+        if last_element is not None:
+            if isinstance(element, chord.Chord) and isinstance(last_element, chord.Chord):
+                # Usa la nueva función de comparación para acordes
+                if not are_chords_equivalent(element, last_element):
+                    cleaned_elements.append(element)
+            elif current_repr != last_element:
+                cleaned_elements.append(element)
         else:
-            continue  # Ignorar elementos que no sean notas o acordes
-        
-        if current_repr != last_element:
             cleaned_elements.append(element)
-            last_element = current_repr
+
+        last_element = element if isinstance(element, chord.Chord) else current_repr
 
     cleaned_track = stream.Part()
     for element in cleaned_elements:
@@ -99,6 +127,22 @@ def merge_consecutive_duplicates(track):
         cleaned_track.append(last_element)
     return cleaned_track
 
+
+def quantize_note_to_scale(note, chosen_scale):
+    """
+    Ajusta la nota para que encaje en la escala proporcionada.
+    """
+    pitch_midi = note.pitch.midi
+    # Genera los pitches de la escala dentro de un rango cercano al pitch de la nota
+    scale_pitches = [p.midi for p in chosen_scale.getPitches(note.pitch.transpose(-12), note.pitch.transpose(12))]
+    
+    # Encuentra el pitch de la escala más cercano al pitch de la nota
+    closest_pitch_midi = min(scale_pitches, key=lambda p: abs(p - pitch_midi))
+    
+    # Asigna el pitch más cercano a la nota
+    note.pitch.midi = closest_pitch_midi
+    return note
+
 def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, notes_export=True, chord_export=True, raw_notes_range="C1,C6"):
     try:
         start_note, end_note = raw_notes_range.split(',')
@@ -112,6 +156,12 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
    # end_note_obj.transpose(1, inPlace=True)  # Esto asegura que el rango incluya el extremo superior
 
     midi_stream = converter.parse(midi_file_path)
+    key = midi_stream.analyze('key')
+
+    if key.mode == 'major':
+        chosen_scale = scale.MajorScale(key.tonic)
+    else:
+        chosen_scale = scale.MinorScale(key.tonic)
 
     notes_track = stream.Part()
     chords_track = stream.Part()
@@ -121,8 +171,9 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
     for element in midi_stream.flatten():
         if isinstance(element, note.Note) or isinstance(element, chord.Chord):
             transpose_to_range(element, start_note_obj.pitch, end_note_obj.pitch)
-            # Procesamiento de notas y acordes después de la transposición
+            # Cuantizar notas y acordes a la escala antes de procesarlas
             if isinstance(element, note.Note):
+                element = quantize_note_to_scale(element, chosen_scale)
                 current_note_repr = (element.pitch.midi,)
                 if last_note_or_chord != current_note_repr:
                     new_note = note.Note()
@@ -131,6 +182,8 @@ def process_midi_file(midi_file_path, index, desired_duration=8, key_name=True, 
                     notes_track.append(new_note)
                     last_note_or_chord = current_note_repr
             elif isinstance(element, chord.Chord):
+                new_chord_pitches = [quantize_note_to_scale(n, chosen_scale) for n in element.notes]
+                element = chord.Chord(new_chord_pitches)
                 if len(element.pitches) > 1:  # Verificar que hay más de una nota
                     current_chord_repr = tuple(sorted(p.midi for p in element.pitches))
                     if last_note_or_chord != current_chord_repr:
