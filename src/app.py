@@ -241,13 +241,13 @@ def process_all_midi_files(desired_duration=1, key_name=False, notes_export=True
     return {'generated_files': all_generated_files}
 
 if __name__ == '__main__':
-    desired_duration = 4
+    desired_duration = 8
     key_name = True
     notes_export = False
     chord_export = True
     raw_notes_range = "C2,C3"
-    delete_consecutive = True
-    legato_consecutive = False  
+    delete_consecutive = False
+    legato_consecutive = True  
 
     generated_files_info = process_all_midi_files(
         desired_duration=desired_duration,
